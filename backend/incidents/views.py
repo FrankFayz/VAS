@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdmin, IsSupervisorOrAdmin
-from .models import Incident
+from .models import Evidence, Incident, IncidentTimeline
 from .serializers import (
     EvidenceSerializer,
     EvidenceUploadSerializer,
@@ -32,15 +32,19 @@ class IncidentListCreateView(generics.ListCreateAPIView):
 
         status_filter = self.request.query_params.get('status')
         session_id = self.request.query_params.get('session')
+        hall_id = self.request.query_params.get('hall')
 
         if status_filter:
             qs = qs.filter(status=status_filter)
         if session_id:
             qs = qs.filter(session_id=session_id)
+        if hall_id:
+            qs = qs.filter(session__hall_id=hall_id)
 
         if user.role == user.Role.ADMIN:
             return qs
-        return qs.filter(session__supervisors=user)
+        # Supervisors see incidents for the room they selected (org-wide rooms)
+        return qs
 
 
 class IncidentDetailView(generics.RetrieveAPIView):
@@ -54,7 +58,7 @@ class IncidentDetailView(generics.RetrieveAPIView):
         ).prefetch_related('evidence_items', 'timeline')
         if user.role == user.Role.ADMIN:
             return qs
-        return qs.filter(session__supervisors=user)
+        return qs
 
 
 class IncidentActionView(APIView):
@@ -67,7 +71,7 @@ class IncidentActionView(APIView):
             return Response({'detail': 'Incident not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         user = request.user
-        if user.role != user.Role.ADMIN and not incident.session.supervisors.filter(id=user.id).exists():
+        if user.role != user.Role.ADMIN and user.approval_status != user.ApprovalStatus.APPROVED:
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = IncidentActionSerializer(data=request.data)
@@ -221,3 +225,127 @@ class SeedDemoDataView(APIView):
             'hall_id': hall.id,
             'session_id': session.id,
         })
+
+
+class CameraPcTestView(APIView):
+    """
+    Admin PC-camera test path.
+    Captures a frame from the admin browser (PC webcam), uploads evidence,
+    and creates a real incident for that camera's room so supervisors can verify the pipeline.
+    """
+    permission_classes = [IsAdmin]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        from datetime import timedelta
+
+        import cloudinary.uploader
+        from exams.models import Camera, ExamSession
+
+        camera_id = request.data.get('camera')
+        upload = request.FILES.get('file')
+        if not camera_id:
+            return Response({'detail': 'camera is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not upload:
+            return Response({'detail': 'file is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            camera = Camera.objects.select_related('hall').get(pk=camera_id)
+        except Camera.DoesNotExist:
+            return Response({'detail': 'Camera not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        now = timezone.now()
+        session = (
+            ExamSession.objects.filter(
+                hall=camera.hall,
+                status=ExamSession.Status.LIVE,
+            )
+            .order_by('-start_time')
+            .first()
+        )
+        if not session:
+            session = ExamSession.objects.create(
+                title=f'{camera.hall.name} — Live Monitoring',
+                subject='Live Monitoring',
+                hall=camera.hall,
+                student_count=camera.hall.capacity or 0,
+                status=ExamSession.Status.LIVE,
+                start_time=now - timedelta(minutes=5),
+                end_time=now + timedelta(hours=4),
+                created_by=request.user,
+            )
+
+        try:
+            upload_result = cloudinary.uploader.upload(
+                upload,
+                folder='vas/evidence',
+                resource_type='image',
+            )
+        except Exception as exc:
+            return Response(
+                {'detail': f'Cloudinary upload failed: {exc}'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        public_id = upload_result.get('public_id', '')
+        secure_url = upload_result.get('secure_url', '')
+        thumbnail_url = secure_url
+        if public_id:
+            import cloudinary
+            thumbnail_url = cloudinary.CloudinaryImage(public_id).build_url(
+                width=480,
+                crop='fill',
+                quality='auto',
+            )
+
+        incident = Incident.objects.create(
+            session=session,
+            camera=camera,
+            incident_type=Incident.Type.OTHER,
+            status=Incident.Status.NEW,
+            severity=Incident.Severity.MEDIUM,
+            confidence=100,
+            seat_row=1,
+            seat_number=1,
+            description=(
+                f'PC camera test capture from {camera.name} ({camera.identifier})'
+                + (f' @ {camera.ip_address}' if camera.ip_address else '')
+            ),
+            detected_at=now,
+        )
+        Evidence.objects.create(
+            incident=incident,
+            media_type=Evidence.MediaType.IMAGE,
+            cloudinary_url=secure_url,
+            cloudinary_public_id=public_id,
+            thumbnail_url=thumbnail_url,
+            file_size_bytes=upload_result.get('bytes'),
+            caption='PC camera test frame',
+            captured_at=now,
+        )
+        IncidentTimeline.objects.create(
+            incident=incident,
+            event='PC camera test capture received',
+            timestamp=now,
+        )
+        IncidentTimeline.objects.create(
+            incident=incident,
+            event='Evidence uploaded to Cloudinary',
+            timestamp=now,
+        )
+
+        camera.is_online = True
+        camera.save(update_fields=['is_online'])
+
+        return Response(
+            {
+                'message': 'Test capture sent. Supervisors in this room can now review it.',
+                'incident_id': incident.id,
+                'session_id': session.id,
+                'hall_id': camera.hall_id,
+                'hall_name': camera.hall.name,
+                'camera_id': camera.id,
+                'evidence_url': secure_url,
+            },
+            status=status.HTTP_201_CREATED,
+        )
