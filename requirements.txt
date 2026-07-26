@@ -1,0 +1,3 @@
+# Root helper if Render Root Directory is left blank.
+# Prefer setting Root Directory to "backend" instead.
+-r backend/requirements.txt
