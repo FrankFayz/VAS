@@ -1,0 +1,13 @@
+{
+  "name": "vas",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Virtual Assistant Supervisor — Django + React",
+  "scripts": {
+    "dev:backend": "cd backend && .\\venv\\Scripts\\python manage.py runserver",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && python -m venv venv && .\\venv\\Scripts\\pip install -r requirements.txt",
+    "migrate": "cd backend && .\\venv\\Scripts\\python manage.py migrate"
+  }
+}
