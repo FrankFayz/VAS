@@ -20,7 +20,7 @@ services:
       - key: CSRF_TRUSTED_ORIGINS
         value: https://vas-s3zt.onrender.com
       - key: CORS_ALLOWED_ORIGINS
-        sync: false
+        value: https://vas-sandy.vercel.app
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
