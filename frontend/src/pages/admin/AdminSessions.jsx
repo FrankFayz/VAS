@@ -91,7 +91,7 @@ export default function AdminSessions() {
         </div>
       ) : sessions.length === 0 ? (
         <div className="card py-16 text-center text-slate-500">
-          No exam sessions yet. Create one or load demo data.
+          No exam sessions yet. Create one after rooms and cameras are set up.
         </div>
       ) : (
         <div className="space-y-4">

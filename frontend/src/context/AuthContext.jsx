@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import api from '../api/client'
 
 const AuthContext = createContext(null)
+const HALL_KEY = 'vas_selected_hall'
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -45,6 +46,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    localStorage.removeItem(HALL_KEY)
     setUser(null)
   }
 

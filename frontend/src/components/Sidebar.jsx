@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -7,13 +7,18 @@ import {
   Calendar,
   LogOut,
   X,
+  DoorOpen,
+  ArrowLeftRight,
 } from 'lucide-react'
 import VasCameraIcon from './VasCameraIcon'
 import { useAuth } from '../context/AuthContext'
+import { useSupervision } from '../context/SupervisionContext'
 
 export default function Sidebar({ open = false, onClose }) {
   const { user, logout } = useAuth()
+  const { selectedHall, clearHall } = useSupervision()
   const location = useLocation()
+  const navigate = useNavigate()
   const isAdmin = user?.is_admin
 
   const supervisorLinks = [
@@ -22,6 +27,7 @@ export default function Sidebar({ open = false, onClose }) {
 
   const adminLinks = [
     { to: '/admin', icon: LayoutDashboard, label: 'Overview' },
+    { to: '/admin/rooms', icon: DoorOpen, label: 'Exam Rooms' },
     { to: '/admin/approvals', icon: UserCheck, label: 'Approvals' },
     { to: '/admin/sessions', icon: Calendar, label: 'Exam Sessions' },
     { to: '/admin/users', icon: Users, label: 'Users' },
@@ -30,6 +36,12 @@ export default function Sidebar({ open = false, onClose }) {
   const links = isAdmin ? adminLinks : supervisorLinks
 
   const handleNav = () => onClose?.()
+
+  const changeRoom = () => {
+    clearHall()
+    onClose?.()
+    navigate('/select-room')
+  }
 
   return (
     <aside
@@ -80,6 +92,28 @@ export default function Sidebar({ open = false, onClose }) {
           )
         })}
 
+        {!isAdmin && selectedHall && (
+          <div className="mt-4 rounded-xl border border-slate-800 bg-[#0d1420] p-3.5">
+            <p className="font-block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              Supervising
+            </p>
+            <p className="mt-1 font-block text-xs font-bold uppercase tracking-[0.08em] text-white">
+              {selectedHall.name}
+            </p>
+            {selectedHall.location && (
+              <p className="mt-1 text-xs text-slate-500">{selectedHall.location}</p>
+            )}
+            <button
+              type="button"
+              onClick={changeRoom}
+              className="mt-3 inline-flex items-center gap-1.5 font-block text-[10px] font-bold uppercase tracking-[0.12em] text-vas-400 hover:text-vas-300"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              Change Room
+            </button>
+          </div>
+        )}
+
         {!isAdmin && (
           <div className="mt-4 rounded-xl border border-slate-800 bg-[#0d1420] p-3.5">
             <div className="flex items-center gap-2 text-amber-400">
@@ -89,7 +123,7 @@ export default function Sidebar({ open = false, onClose }) {
               </span>
             </div>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              AI-detected incidents appear here for your review.
+              Camera evidence for this room appears here for review.
             </p>
           </div>
         )}

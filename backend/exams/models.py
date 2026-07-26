@@ -17,12 +17,34 @@ class Camera(models.Model):
     hall = models.ForeignKey(ExamHall, on_delete=models.CASCADE, related_name='cameras')
     name = models.CharField(max_length=80)
     identifier = models.CharField(max_length=80, unique=True)
-    is_online = models.BooleanField(default=True)
     position = models.CharField(max_length=120, blank=True)
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text='LAN IP of the PC or IP camera (e.g. 192.168.1.45).',
+    )
+    stream_port = models.PositiveIntegerField(default=554, blank=True, null=True)
+    rtsp_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text='Local RTSP/HTTP stream URL for the edge AI agent (optional).',
+    )
+    is_online = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
 
     def __str__(self):
         return f'{self.name} ({self.hall.name})'
+
+    def build_default_rtsp(self):
+        if self.rtsp_url:
+            return self.rtsp_url
+        if self.ip_address:
+            port = self.stream_port or 554
+            return f'rtsp://{self.ip_address}:{port}/stream1'
+        return ''
 
 
 class ExamSession(models.Model):

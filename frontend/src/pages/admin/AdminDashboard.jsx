@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { UserCheck, Users, AlertTriangle, Database, ChevronRight } from 'lucide-react'
+import { UserCheck, Users, AlertTriangle, ChevronRight, DoorOpen } from 'lucide-react'
 import api from '../../api/client'
 import AppLayout from '../../components/AppLayout'
 import StatCard from '../../components/StatCard'
@@ -28,26 +28,11 @@ export default function AdminDashboard() {
     load()
   }, [])
 
-  const seedDemo = async () => {
-    try {
-      const { data } = await api.post('/incidents/seed-demo/')
-      alert(data.message)
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Seed failed')
-    }
-  }
-
   return (
     <AppLayout
       eyebrow="Admin Console"
       title="System Overview"
-      subtitle="Manage supervisors, exam sessions, and system health"
-      actions={
-        <button type="button" onClick={seedDemo} className="btn-secondary">
-          <Database className="h-4 w-4" />
-          Load Demo Data
-        </button>
-      }
+      subtitle="Manage rooms, cameras, supervisors, and exam sessions"
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -110,6 +95,7 @@ export default function AdminDashboard() {
           <h2 className="section-title mt-1">Quick Actions</h2>
           <div className="mt-5 space-y-2">
             {[
+              { to: '/admin/rooms', label: 'Manage Exam Rooms', icon: DoorOpen },
               { to: '/admin/approvals', label: 'Review Supervisor Approvals', icon: UserCheck },
               { to: '/admin/sessions', label: 'Manage Exam Sessions', icon: AlertTriangle },
               { to: '/admin/users', label: 'View All Users', icon: Users },

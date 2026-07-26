@@ -1,4 +1,4 @@
-from rest_framework import generics, status
+from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -21,7 +21,25 @@ class ExamHallListCreateView(generics.ListCreateAPIView):
         return [IsApprovedUser()]
 
     def get_queryset(self):
-        return ExamHall.objects.prefetch_related('cameras').filter(is_active=True)
+        qs = ExamHall.objects.prefetch_related('cameras').order_by('name')
+        user = self.request.user
+        include_inactive = self.request.query_params.get('include_inactive') == '1'
+        if user.role == user.Role.ADMIN and include_inactive:
+            return qs
+        return qs.filter(is_active=True)
+
+
+class ExamHallDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ExamHallSerializer
+    permission_classes = [IsAdmin]
+
+    def get_queryset(self):
+        return ExamHall.objects.prefetch_related('cameras').all()
+
+    def perform_destroy(self, instance):
+        # Soft-delete so history stays intact
+        instance.is_active = False
+        instance.save(update_fields=['is_active'])
 
 
 class ExamSessionListCreateView(generics.ListCreateAPIView):
@@ -36,11 +54,11 @@ class ExamSessionListCreateView(generics.ListCreateAPIView):
         return ExamSessionSerializer
 
     def get_queryset(self):
-        user = self.request.user
         qs = ExamSession.objects.select_related('hall').prefetch_related('supervisors')
-        if user.role == user.Role.ADMIN:
-            return qs
-        return qs.filter(supervisors=user)
+        hall_id = self.request.query_params.get('hall')
+        if hall_id:
+            qs = qs.filter(hall_id=hall_id)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -51,11 +69,7 @@ class ExamSessionDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsSupervisorOrAdmin]
 
     def get_queryset(self):
-        user = self.request.user
-        qs = ExamSession.objects.select_related('hall').prefetch_related('supervisors')
-        if user.role == user.Role.ADMIN:
-            return qs
-        return qs.filter(supervisors=user)
+        return ExamSession.objects.select_related('hall').prefetch_related('supervisors')
 
 
 class LiveSessionsView(generics.ListAPIView):
@@ -63,11 +77,11 @@ class LiveSessionsView(generics.ListAPIView):
     serializer_class = ExamSessionSerializer
 
     def get_queryset(self):
-        user = self.request.user
         qs = ExamSession.objects.filter(status=ExamSession.Status.LIVE).select_related('hall')
-        if user.role == user.Role.ADMIN:
-            return qs
-        return qs.filter(supervisors=user)
+        hall_id = self.request.query_params.get('hall')
+        if hall_id:
+            qs = qs.filter(hall_id=hall_id)
+        return qs
 
 
 class CameraListCreateView(generics.ListCreateAPIView):
@@ -80,10 +94,16 @@ class CameraListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         hall_id = self.request.query_params.get('hall')
-        qs = Camera.objects.select_related('hall')
+        qs = Camera.objects.select_related('hall').order_by('name')
         if hall_id:
             qs = qs.filter(hall_id=hall_id)
         return qs
+
+
+class CameraDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = CameraSerializer
+    permission_classes = [IsAdmin]
+    queryset = Camera.objects.select_related('hall').all()
 
 
 class DashboardStatsView(APIView):
@@ -92,17 +112,20 @@ class DashboardStatsView(APIView):
     def get(self, request):
         from incidents.models import Incident
 
-        user = request.user
+        hall_id = request.query_params.get('hall')
         sessions = ExamSession.objects.filter(status=ExamSession.Status.LIVE)
         incidents = Incident.objects.filter(status=Incident.Status.NEW)
+        cameras = Camera.objects.filter(is_online=True)
 
-        if user.role != user.Role.ADMIN:
-            sessions = sessions.filter(supervisors=user)
-            incidents = incidents.filter(session__supervisors=user)
+        if hall_id:
+            sessions = sessions.filter(hall_id=hall_id)
+            incidents = incidents.filter(session__hall_id=hall_id)
+            cameras = cameras.filter(hall_id=hall_id)
 
         return Response({
             'live_sessions': sessions.count(),
             'new_incidents': incidents.count(),
             'total_students': sum(s.student_count for s in sessions),
-            'online_cameras': Camera.objects.filter(is_online=True).count(),
+            'online_cameras': cameras.count(),
+            'hall_id': int(hall_id) if hall_id else None,
         })
