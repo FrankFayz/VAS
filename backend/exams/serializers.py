@@ -58,6 +58,9 @@ class ExamHallSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = ['created_at', 'cameras', 'camera_count']
+        extra_kwargs = {
+            'is_active': {'required': False},
+        }
 
     def get_camera_count(self, obj):
         return obj.cameras.count()

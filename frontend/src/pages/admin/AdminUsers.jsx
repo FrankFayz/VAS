@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Ban, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { Ban, CheckCircle, Clock, XCircle, Users } from 'lucide-react'
 import api from '../../api/client'
 import AppLayout from '../../components/AppLayout'
+import EmptyState from '../../components/EmptyState'
 import { formatDate } from '../../utils/constants'
 
 const STATUS_BADGE = {
@@ -58,42 +59,48 @@ export default function AdminUsers() {
         <div className="card py-16 text-center font-block text-xs uppercase tracking-[0.14em] text-slate-500">
           Loading Users...
         </div>
+      ) : users.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="No Users Yet"
+          description="Supervisors appear here after they register."
+        />
       ) : (
-        <div className="card overflow-hidden p-0">
+        <div className="overflow-hidden rounded-xl border border-slate-800">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-800 bg-[#121a26]">
+                <tr className="border-b border-slate-800 bg-[var(--vas-bg-hover)]">
                   {['Name', 'Email', 'Employee ID', 'Status', 'Joined', 'Actions'].map((h) => (
                     <th
                       key={h}
-                      className="px-6 py-4 font-block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400"
+                      className="px-4 py-3 font-block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 sm:px-6 sm:py-4"
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="bg-[var(--vas-bg-panel)]">
                 {users.map((user) => {
                   const Icon = STATUS_ICON[user.approval_status] || Clock
                   return (
-                    <tr key={user.id} className="border-b border-slate-800 transition-colors hover:bg-[#121a26]">
-                      <td className="px-6 py-4 font-block text-xs font-bold uppercase tracking-[0.06em] text-white">
+                    <tr key={user.id} className="border-b border-slate-800 transition-colors hover:bg-[var(--vas-bg-hover)]">
+                      <td className="px-4 py-3 font-block text-xs font-bold uppercase tracking-[0.06em] text-white sm:px-6 sm:py-4">
                         {user.full_name}
                       </td>
-                      <td className="px-6 py-4 text-slate-400">{user.email}</td>
-                      <td className="px-6 py-4 text-slate-400">{user.employee_id || '—'}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3 text-slate-400 sm:px-6 sm:py-4">{user.email}</td>
+                      <td className="px-4 py-3 text-slate-400 sm:px-6 sm:py-4">{user.employee_id || '—'}</td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4">
                         <span className={`badge ${STATUS_BADGE[user.approval_status]}`}>
                           <Icon className="mr-1 inline h-3 w-3" />
                           {user.approval_status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 font-block text-[11px] uppercase tracking-[0.08em] text-slate-500">
+                      <td className="px-4 py-3 font-block text-[11px] uppercase tracking-[0.08em] text-slate-500 sm:px-6 sm:py-4">
                         {formatDate(user.created_at)}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3 sm:px-6 sm:py-4">
                         {user.approval_status === 'APPROVED' && (
                           <button
                             type="button"

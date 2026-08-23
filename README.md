@@ -45,7 +45,7 @@ Open http://localhost:5173
 - Incident detail with evidence viewer (Cloudinary)
 - Evidence upload to Cloudinary (images & videos)
 - Exam session & hall management
-- Demo data seeding from admin panel
+- Camera evidence library (admin) with delete rights
 
 ## API Endpoints
 
@@ -56,8 +56,9 @@ Open http://localhost:5173
 | `GET /api/auth/admin/pending/` | Pending approvals |
 | `POST /api/auth/admin/users/:id/approve/` | Approve supervisor |
 | `GET /api/incidents/` | List incidents |
-| `POST /api/incidents/:id/evidence/` | Upload evidence to Cloudinary |
-| `POST /api/incidents/seed-demo/` | Load demo data |
+| `POST /api/incidents/:id/evidence/` | Camera/admin evidence ingest |
+| `DELETE /api/incidents/:id/evidence/:eid/` | Delete evidence |
+| `GET /api/incidents/evidence/` | Admin evidence library |
 
 ## Environment
 

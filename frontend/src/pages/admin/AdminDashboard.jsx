@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { UserCheck, Users, AlertTriangle, ChevronRight, DoorOpen } from 'lucide-react'
+import { UserCheck, Users, AlertTriangle, ChevronRight, DoorOpen, Inbox, HardDrive } from 'lucide-react'
 import api from '../../api/client'
 import AppLayout from '../../components/AppLayout'
+import EmptyState from '../../components/EmptyState'
 import StatCard from '../../components/StatCard'
 
 export default function AdminDashboard() {
@@ -62,7 +63,13 @@ export default function AdminDashboard() {
           {loading ? (
             <p className="mt-6 font-block text-xs uppercase tracking-[0.12em] text-slate-500">Loading...</p>
           ) : pending.length === 0 ? (
-            <p className="mt-6 text-sm text-slate-500">No pending requests. All caught up!</p>
+            <div className="mt-4">
+              <EmptyState
+                icon={Inbox}
+                title="All Caught Up"
+                description="No pending supervisor requests."
+              />
+            </div>
           ) : (
             <div className="mt-5 space-y-3">
               {pending.map((user) => (
@@ -96,6 +103,7 @@ export default function AdminDashboard() {
           <div className="mt-5 space-y-2">
             {[
               { to: '/admin/rooms', label: 'Manage Exam Rooms', icon: DoorOpen },
+              { to: '/admin/evidence', label: 'Camera Evidence Library', icon: HardDrive },
               { to: '/admin/approvals', label: 'Review Supervisor Approvals', icon: UserCheck },
               { to: '/admin/sessions', label: 'Manage Exam Sessions', icon: AlertTriangle },
               { to: '/admin/users', label: 'View All Users', icon: Users },

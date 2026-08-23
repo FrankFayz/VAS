@@ -7,7 +7,7 @@ export default function StatCard({ label, value, icon: Icon, color = 'vas', tren
   }
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-[#0d1420] p-5 transition-colors hover:border-slate-700">
+    <div className="rounded-xl border border-slate-800 bg-[var(--vas-bg-panel)] p-5 transition-colors hover:border-slate-700">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="font-block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">

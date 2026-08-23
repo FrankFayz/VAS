@@ -9,6 +9,7 @@ import {
   X,
   DoorOpen,
   ArrowLeftRight,
+  HardDrive,
 } from 'lucide-react'
 import VasCameraIcon from './VasCameraIcon'
 import { useAuth } from '../context/AuthContext'
@@ -22,12 +23,13 @@ export default function Sidebar({ open = false, onClose }) {
   const isAdmin = user?.is_admin
 
   const supervisorLinks = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Incident Queue' },
   ]
 
   const adminLinks = [
     { to: '/admin', icon: LayoutDashboard, label: 'Overview' },
     { to: '/admin/rooms', icon: DoorOpen, label: 'Exam Rooms' },
+    { to: '/admin/evidence', icon: HardDrive, label: 'Evidence' },
     { to: '/admin/approvals', icon: UserCheck, label: 'Approvals' },
     { to: '/admin/sessions', icon: Calendar, label: 'Exam Sessions' },
     { to: '/admin/users', icon: Users, label: 'Users' },
@@ -40,21 +42,25 @@ export default function Sidebar({ open = false, onClose }) {
   const changeRoom = () => {
     clearHall()
     onClose?.()
-    navigate('/select-room')
+    navigate('/select-room', { state: { pickRoom: true } })
   }
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-800 bg-[#0a0f18] transition-transform duration-200 lg:w-64 lg:translate-x-0 ${
+      className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-800 bg-[var(--vas-bg-raised)] transition-transform duration-150 ease-out lg:w-64 lg:translate-x-0 ${
         open ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
       <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
         <div className="flex items-center gap-3">
-          <VasCameraIcon className="h-10 w-14 shrink-0" />
+          <span className="inline-flex h-10 w-10 shrink-0">
+            <VasCameraIcon className="h-full w-full" />
+          </span>
           <div>
-            <p className="font-block text-sm font-bold uppercase tracking-[0.08em] text-white">VAS</p>
-            <p className="font-block text-[10px] font-semibold uppercase tracking-[0.16em] text-vas-400">
+            <p className="font-display text-[15px] font-bold uppercase tracking-[0.16em] text-white">
+              VAS
+            </p>
+            <p className="mt-0.5 font-block text-[10px] font-semibold uppercase tracking-[0.16em] text-vas-400">
               {isAdmin ? 'Admin Console' : 'Live Monitor'}
             </p>
           </div>

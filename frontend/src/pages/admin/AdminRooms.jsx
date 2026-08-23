@@ -9,9 +9,12 @@ import {
   Trash2,
   X,
   MonitorPlay,
+  DoorOpen,
 } from 'lucide-react'
 import api from '../../api/client'
+import { invalidateHallsCache } from '../../api/halls'
 import AppLayout from '../../components/AppLayout'
+import EmptyState from '../../components/EmptyState'
 import PcCameraTestModal from '../../components/PcCameraTestModal'
 
 const emptyRoom = { name: '', location: '', capacity: 50 }
@@ -56,10 +59,10 @@ export default function AdminRooms() {
       const { data } = await api.get('/exams/halls/', { params: { include_inactive: '1' } })
       const list = data.results || data
       setRooms(list)
-      if (manageRoom) {
-        const updated = list.find((r) => r.id === manageRoom.id)
-        setManageRoom(updated || null)
-      }
+      setManageRoom((current) => {
+        if (!current) return null
+        return list.find((r) => r.id === current.id) || null
+      })
     } catch (err) {
       console.error(err)
     } finally {
@@ -104,6 +107,7 @@ export default function AdminRooms() {
       } else {
         await api.post('/exams/halls/', payload)
       }
+      invalidateHallsCache()
       setShowRoomForm(false)
       setEditingRoomId(null)
       setRoomForm(emptyRoom)
@@ -116,15 +120,37 @@ export default function AdminRooms() {
   }
 
   const toggleRoomActive = async (room) => {
+    const nextActive = !room.is_active
     try {
-      if (room.is_active) {
-        await api.delete(`/exams/halls/${room.id}/`)
-      } else {
-        await api.patch(`/exams/halls/${room.id}/`, { is_active: true })
+      await api.patch(`/exams/halls/${room.id}/`, { is_active: nextActive })
+      invalidateHallsCache()
+      // Optimistic UI so Enable/Disable feels instant
+      setRooms((prev) =>
+        prev.map((r) => (r.id === room.id ? { ...r, is_active: nextActive } : r)),
+      )
+      await fetchRooms()
+    } catch (err) {
+      alert(errorText(err, 'Could not update room status.'))
+      await fetchRooms()
+    }
+  }
+
+  const deleteRoom = async (room) => {
+    const ok = window.confirm(
+      `Permanently delete "${room.name}"?\n\nThis removes the room, its cameras, and linked exam sessions. This cannot be undone.`,
+    )
+    if (!ok) return
+    try {
+      await api.delete(`/exams/halls/${room.id}/`)
+      invalidateHallsCache()
+      if (manageRoom?.id === room.id) setManageRoom(null)
+      if (editingRoomId === room.id) {
+        setShowRoomForm(false)
+        setEditingRoomId(null)
       }
       await fetchRooms()
     } catch (err) {
-      alert(errorText(err, 'Update failed'))
+      alert(errorText(err, 'Could not delete room.'))
     }
   }
 
@@ -182,6 +208,7 @@ export default function AdminRooms() {
         await api.post('/exams/cameras/', payload)
       }
       cancelCameraForm()
+      invalidateHallsCache()
       await fetchRooms()
     } catch (err) {
       setCameraError(errorText(err, 'Could not save camera.'))
@@ -197,6 +224,7 @@ export default function AdminRooms() {
     try {
       await api.delete(`/exams/cameras/${cam.id}/`)
       if (editingCameraId === cam.id) cancelCameraForm()
+      invalidateHallsCache()
       await fetchRooms()
     } catch (err) {
       alert(errorText(err, 'Could not remove camera.'))
@@ -465,14 +493,17 @@ export default function AdminRooms() {
           Loading Rooms...
         </div>
       ) : rooms.length === 0 ? (
-        <div className="card py-16 text-center">
-          <p className="font-block text-sm font-bold uppercase tracking-[0.1em] text-white">
-            No Rooms Yet
-          </p>
-          <p className="mt-2 text-sm text-slate-500">
-            Add a room, assign your PC IP camera, then test a capture.
-          </p>
-        </div>
+        <EmptyState
+          icon={DoorOpen}
+          title="No Rooms Yet"
+          description="Add a room, assign cameras, then create an exam session."
+          action={
+            <button type="button" onClick={openCreateRoom} className="btn-primary">
+              <Plus className="h-4 w-4" />
+              Add Room
+            </button>
+          }
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {rooms.map((room) => (
@@ -534,6 +565,14 @@ export default function AdminRooms() {
                 <button type="button" onClick={() => toggleRoomActive(room)} className="btn-secondary py-2">
                   <Power className="h-3.5 w-3.5" />
                   {room.is_active ? 'Disable' : 'Enable'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteRoom(room)}
+                  className="btn-danger py-2"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
                 </button>
               </div>
             </div>

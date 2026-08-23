@@ -14,6 +14,7 @@ import AdminApprovals from './pages/admin/AdminApprovals'
 import AdminUsers from './pages/admin/AdminUsers'
 import AdminSessions from './pages/admin/AdminSessions'
 import AdminRooms from './pages/admin/AdminRooms'
+import AdminEvidence from './pages/admin/AdminEvidence'
 
 function HomeRedirect() {
   const { user, loading } = useAuth()
@@ -99,6 +100,14 @@ export default function App() {
         element={
           <ProtectedRoute requireAdmin>
             <AdminSessions />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/evidence"
+        element={
+          <ProtectedRoute requireAdmin>
+            <AdminEvidence />
           </ProtectedRoute>
         }
       />

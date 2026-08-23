@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Upload } from 'lucide-react'
+import { ArrowLeft, Trash2, Camera } from 'lucide-react'
 import api from '../api/client'
 import AppLayout from '../components/AppLayout'
+import IncidentActions from '../components/IncidentActions'
 import { INCIDENT_TYPES, SEVERITY_COLORS, STATUS_COLORS, formatDate } from '../utils/constants'
 
 export default function IncidentDetail() {
@@ -11,14 +12,21 @@ export default function IncidentDetail() {
   const [incident, setIncident] = useState(null)
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
-  const [acting, setActing] = useState(false)
-  const [uploading, setUploading] = useState(false)
+  const [actingStatus, setActingStatus] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [actionError, setActionError] = useState('')
+  const [activeEvidenceId, setActiveEvidenceId] = useState(null)
 
   const fetchIncident = async () => {
     try {
       const { data } = await api.get(`/incidents/${id}/`)
       setIncident(data)
       setNotes(data.supervisor_notes || '')
+      setActiveEvidenceId((prev) => {
+        const items = data.evidence_items || []
+        if (prev && items.some((e) => e.id === prev)) return prev
+        return items[0]?.id ?? null
+      })
     } catch {
       navigate('/dashboard')
     } finally {
@@ -31,36 +39,37 @@ export default function IncidentDetail() {
   }, [id])
 
   const handleAction = async (status) => {
-    setActing(true)
+    if (actingStatus) return
+    setActingStatus(status)
+    setActionError('')
     try {
       const { data } = await api.post(`/incidents/${id}/action/`, {
         status,
         supervisor_notes: notes,
       })
+      // Stay on this page — update in place, no navigation / remount
       setIncident(data.incident)
     } catch (err) {
-      alert(err.response?.data?.detail || 'Action failed')
+      setActionError(
+        err.response?.data?.detail ||
+          err.response?.data?.status?.[0] ||
+          'Could not save decision. Is the API running?',
+      )
     } finally {
-      setActing(false)
+      setActingStatus(null)
     }
   }
 
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('media_type', file.type.startsWith('video') ? 'VIDEO' : 'IMAGE')
+  const handleDeleteEvidence = async (evidenceId) => {
+    if (!window.confirm('Delete this camera evidence? This cannot be undone.')) return
+    setDeletingId(evidenceId)
     try {
-      await api.post(`/incidents/${id}/evidence/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      await api.delete(`/incidents/${id}/evidence/${evidenceId}/`)
       await fetchIncident()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Upload failed')
+      alert(err.response?.data?.detail || 'Could not delete evidence.')
     } finally {
-      setUploading(false)
+      setDeletingId(null)
     }
   }
 
@@ -76,7 +85,9 @@ export default function IncidentDetail() {
 
   if (!incident) return null
 
-  const primaryEvidence = incident.evidence_items?.[0]
+  const evidenceItems = incident.evidence_items || []
+  const primaryEvidence =
+    evidenceItems.find((e) => e.id === activeEvidenceId) || evidenceItems[0] || null
 
   return (
     <AppLayout
@@ -86,53 +97,87 @@ export default function IncidentDetail() {
       actions={
         <button type="button" onClick={() => navigate('/dashboard')} className="btn-secondary">
           <ArrowLeft className="h-4 w-4" />
-          Back
+          Queue
         </button>
       }
     >
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid gap-5 pb-36 lg:grid-cols-5 lg:pb-0">
         <div className="lg:col-span-3">
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-[#0d1420]">
+          <div className="mx-auto max-w-xl overflow-hidden rounded-xl border border-slate-800 bg-[var(--vas-bg-panel)] lg:mx-0 lg:max-w-none">
             {primaryEvidence ? (
               primaryEvidence.media_type === 'VIDEO' ? (
                 <video
                   src={primaryEvidence.cloudinary_url}
                   controls
-                  className="aspect-video w-full bg-black"
+                  className="aspect-video max-h-[42vh] w-full bg-black object-contain"
                   poster={primaryEvidence.thumbnail_url}
                 />
               ) : (
                 <img
                   src={primaryEvidence.cloudinary_url}
-                  alt="Evidence"
-                  className="aspect-video w-full object-cover"
+                  alt="Camera evidence"
+                  className="aspect-video max-h-[42vh] w-full object-contain"
                 />
               )
             ) : (
-              <div className="flex aspect-video items-center justify-center bg-[#121a26] font-block text-xs uppercase tracking-[0.14em] text-slate-500">
-                No Evidence Uploaded Yet
+              <div className="flex aspect-video max-h-[42vh] flex-col items-center justify-center gap-2 bg-[var(--vas-bg-hover)] px-6 text-center">
+                <Camera className="h-7 w-7 text-slate-600" />
+                <p className="font-block text-xs uppercase tracking-[0.14em] text-slate-500">
+                  Waiting for camera evidence
+                </p>
               </div>
             )}
           </div>
 
-          {incident.evidence_items?.length > 1 && (
-            <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
-              {incident.evidence_items.map((ev) => (
-                <img
-                  key={ev.id}
-                  src={ev.thumbnail_url || ev.cloudinary_url}
-                  alt=""
-                  className="h-16 w-24 shrink-0 rounded-lg border border-slate-700 object-cover"
-                />
-              ))}
+          {evidenceItems.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="font-block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                Captures · {evidenceItems.length}
+              </p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {evidenceItems.map((ev) => (
+                  <div key={ev.id} className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setActiveEvidenceId(ev.id)}
+                      className={`block overflow-hidden rounded border ${
+                        activeEvidenceId === ev.id
+                          ? 'border-vas-500'
+                          : 'border-slate-700 hover:border-slate-500'
+                      }`}
+                    >
+                      <img
+                        src={ev.thumbnail_url || ev.cloudinary_url}
+                        alt=""
+                        loading="lazy"
+                        className="h-12 w-16 object-cover"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      title="Delete evidence"
+                      disabled={deletingId === ev.id}
+                      onClick={() => handleDeleteEvidence(ev.id)}
+                      className="absolute -right-1 -top-1 rounded border border-red-800 bg-[#1a1014] p-0.5 text-red-400 hover:text-red-300 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {primaryEvidence && (
+                <button
+                  type="button"
+                  disabled={deletingId === primaryEvidence.id}
+                  onClick={() => handleDeleteEvidence(primaryEvidence.id)}
+                  className="btn-secondary py-2 text-red-400 hover:border-red-800 hover:text-red-300"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deletingId === primaryEvidence.id ? 'Deleting…' : 'Delete frame'}
+                </button>
+              )}
             </div>
           )}
-
-          <label className="btn-secondary mt-4 cursor-pointer">
-            <Upload className="h-4 w-4" />
-            {uploading ? 'Uploading...' : 'Upload Evidence'}
-            <input type="file" accept="image/*,video/*" className="hidden" onChange={handleUpload} />
-          </label>
         </div>
 
         <div className="space-y-5 lg:col-span-2">
@@ -183,35 +228,36 @@ export default function IncidentDetail() {
             </div>
           )}
 
-          <div className="card">
+          <div className="card hidden lg:block">
             <h3 className="font-block text-xs font-bold uppercase tracking-[0.14em] text-white">
-              Supervisor Action
+              Supervisor Decision
             </h3>
-            <textarea
-              className="input-field mt-3 min-h-[80px] resize-none"
-              placeholder="Add notes about your decision..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-            <div className="mt-4 grid gap-2">
-              <button type="button" disabled={acting} onClick={() => handleAction('CONFIRMED')} className="btn-danger w-full">
-                <CheckCircle className="h-4 w-4" />
-                Confirm Malpractice
-              </button>
-              <button type="button" disabled={acting} onClick={() => handleAction('WARNING')} className="btn-secondary w-full">
-                <AlertTriangle className="h-4 w-4" />
-                Issue Warning
-              </button>
-              <button type="button" disabled={acting} onClick={() => handleAction('WATCHING')} className="btn-secondary w-full">
-                Watch & Monitor
-              </button>
-              <button type="button" disabled={acting} onClick={() => handleAction('DISMISSED')} className="btn-success w-full">
-                <XCircle className="h-4 w-4" />
-                False Alarm — Dismiss
-              </button>
+            {actionError && <div className="alert-error mt-3 py-2 text-xs">{actionError}</div>}
+            <div className="mt-4">
+              <IncidentActions
+                status={incident.status}
+                actingStatus={actingStatus}
+                onAction={handleAction}
+                notesValue={notes}
+                onNotesChange={setNotes}
+                showNotes
+              />
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-[var(--vas-bg-raised)] p-3 lg:hidden">
+        {actionError && <div className="alert-error mb-2 py-2 text-xs">{actionError}</div>}
+        <IncidentActions
+          status={incident.status}
+          actingStatus={actingStatus}
+          onAction={handleAction}
+          notesValue={notes}
+          onNotesChange={setNotes}
+          showNotes
+          compact
+        />
       </div>
     </AppLayout>
   )

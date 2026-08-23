@@ -30,6 +30,9 @@ class IncidentListCreateView(generics.ListCreateAPIView):
             'session', 'session__hall', 'camera'
         ).prefetch_related('evidence_items')
 
+        # Only camera-received incidents (must have stored evidence) — no demo/mimic rows
+        qs = qs.filter(evidence_items__isnull=False).distinct()
+
         status_filter = self.request.query_params.get('status')
         session_id = self.request.query_params.get('session')
         hall_id = self.request.query_params.get('hall')
@@ -43,7 +46,6 @@ class IncidentListCreateView(generics.ListCreateAPIView):
 
         if user.role == user.Role.ADMIN:
             return qs
-        # Supervisors see incidents for the room they selected (org-wide rooms)
         return qs
 
 
@@ -86,7 +88,23 @@ class IncidentActionView(APIView):
             Incident.Status.DISMISSED,
         ):
             incident.resolved_at = timezone.now()
+        else:
+            incident.resolved_at = None
         incident.save()
+
+        labels = {
+            Incident.Status.CONFIRMED: 'Supervisor confirmed malpractice',
+            Incident.Status.WARNING: 'Supervisor issued a warning',
+            Incident.Status.WATCHING: 'Supervisor marked for continued watch',
+            Incident.Status.DISMISSED: 'Supervisor dismissed as false alarm',
+            Incident.Status.ESCALATED: 'Supervisor escalated the incident',
+            Incident.Status.NEW: 'Incident reset to new',
+        }
+        IncidentTimeline.objects.create(
+            incident=incident,
+            event=labels.get(incident.status, f'Status set to {incident.status}'),
+            timestamp=timezone.now(),
+        )
 
         return Response({
             'message': 'Incident updated successfully.',
@@ -95,7 +113,11 @@ class IncidentActionView(APIView):
 
 
 class EvidenceUploadView(APIView):
-    permission_classes = [IsSupervisorOrAdmin]
+    """
+    Camera / system pipeline only — not for supervisors uploading from a phone/PC gallery.
+    Admin PC-camera test and future edge agents post evidence here.
+    """
+    permission_classes = [IsAdmin]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, pk):
@@ -111,120 +133,91 @@ class EvidenceUploadView(APIView):
         serializer.is_valid(raise_exception=True)
         evidence = serializer.save()
 
+        IncidentTimeline.objects.create(
+            incident=incident,
+            event='Camera evidence received',
+            timestamp=timezone.now(),
+        )
+
         return Response(
             EvidenceSerializer(evidence).data,
             status=status.HTTP_201_CREATED,
         )
 
 
-class SeedDemoDataView(APIView):
-    """Creates sample halls, sessions, and incidents for demo purposes."""
+class EvidenceDeleteView(APIView):
+    """Admin or approved supervisor may delete camera evidence that is not worth keeping."""
+    permission_classes = [IsSupervisorOrAdmin]
+
+    def delete(self, request, pk, evidence_id):
+        try:
+            evidence = Evidence.objects.select_related('incident').get(
+                pk=evidence_id,
+                incident_id=pk,
+            )
+        except Evidence.DoesNotExist:
+            return Response({'detail': 'Evidence not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        if user.role != user.Role.ADMIN and user.approval_status != user.ApprovalStatus.APPROVED:
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        public_id = evidence.cloudinary_public_id
+        incident = evidence.incident
+        evidence_pk = evidence.pk
+        evidence.delete()
+
+        if public_id:
+            try:
+                import cloudinary.uploader
+                cloudinary.uploader.destroy(public_id, invalidate=True)
+            except Exception:
+                pass
+
+        IncidentTimeline.objects.create(
+            incident=incident,
+            event=f'Evidence #{evidence_pk} deleted by {user.full_name or user.username}',
+            timestamp=timezone.now(),
+        )
+
+        return Response({'message': 'Evidence deleted.', 'id': evidence_pk})
+
+
+class EvidenceLibraryView(APIView):
+    """Stored camera evidence for admin review until deleted."""
     permission_classes = [IsAdmin]
 
-    def post(self, request):
-        from datetime import timedelta
-
-        from django.contrib.auth import get_user_model
-        from exams.models import Camera, ExamHall, ExamSession
-
-        from .models import Evidence, IncidentTimeline
-
-        User = get_user_model()
-
-        hall, _ = ExamHall.objects.get_or_create(
-            name='Hall B',
-            defaults={'location': 'Main Building, Floor 2', 'capacity': 60},
-        )
-
-        cam1, _ = Camera.objects.get_or_create(
-            identifier='CAM-HB-01',
-            defaults={'hall': hall, 'name': 'Camera 01 — Front', 'position': 'Front center', 'is_online': True},
-        )
-        cam2, _ = Camera.objects.get_or_create(
-            identifier='CAM-HB-02',
-            defaults={'hall': hall, 'name': 'Camera 02 — Rear Left', 'position': 'Rear left', 'is_online': True},
-        )
-
-        now = timezone.now()
-        session, _ = ExamSession.objects.get_or_create(
-            title='Mathematics Final Examination',
-            hall=hall,
-            defaults={
-                'subject': 'Mathematics',
-                'student_count': 48,
-                'status': ExamSession.Status.LIVE,
-                'start_time': now - timedelta(hours=1),
-                'end_time': now + timedelta(hours=2),
-                'created_by': request.user,
-            },
-        )
-
-        supervisors = User.objects.filter(
-            role=User.Role.SUPERVISOR,
-            approval_status=User.ApprovalStatus.APPROVED,
-        )
-        if supervisors.exists():
-            session.supervisors.set(supervisors)
-
-        demo_incidents = [
-            {
-                'incident_type': Incident.Type.COPYING,
-                'severity': Incident.Severity.HIGH,
-                'confidence': 87,
-                'seat_row': 3,
-                'seat_number': 12,
-                'description': 'Student repeatedly glancing at neighbor\'s paper.',
-                'camera': cam1,
-            },
-            {
-                'incident_type': Incident.Type.PEEKING,
-                'severity': Incident.Severity.MEDIUM,
-                'confidence': 62,
-                'seat_row': 5,
-                'seat_number': 7,
-                'description': 'Sustained off-desk gaze detected.',
-                'camera': cam2,
-            },
-            {
-                'incident_type': Incident.Type.PHONE_USE,
-                'severity': Incident.Severity.CRITICAL,
-                'confidence': 94,
-                'seat_row': 2,
-                'seat_number': 18,
-                'description': 'Mobile device visible under desk.',
-                'camera': cam1,
-            },
-        ]
-
-        created = 0
-        for data in demo_incidents:
-            incident, was_created = Incident.objects.get_or_create(
-                session=session,
-                seat_row=data['seat_row'],
-                seat_number=data['seat_number'],
-                defaults={
-                    **data,
-                    'detected_at': now - timedelta(minutes=created * 3 + 2),
-                },
+    def get(self, request):
+        qs = (
+            Evidence.objects.select_related(
+                'incident',
+                'incident__session',
+                'incident__session__hall',
+                'incident__camera',
             )
-            if was_created:
-                IncidentTimeline.objects.create(
-                    incident=incident,
-                    event='AI detection triggered',
-                    timestamp=incident.detected_at,
-                )
-                IncidentTimeline.objects.create(
-                    incident=incident,
-                    event='Evidence frame captured',
-                    timestamp=incident.detected_at + timedelta(seconds=5),
-                )
-                created += 1
+            .order_by('-captured_at')
+        )
+        hall_id = request.query_params.get('hall')
+        if hall_id:
+            qs = qs.filter(incident__session__hall_id=hall_id)
 
-        return Response({
-            'message': f'Demo data ready. {created} new incidents created.',
-            'hall_id': hall.id,
-            'session_id': session.id,
-        })
+        results = []
+        for ev in qs[:200]:
+            results.append({
+                'id': ev.id,
+                'incident_id': ev.incident_id,
+                'media_type': ev.media_type,
+                'cloudinary_url': ev.cloudinary_url,
+                'thumbnail_url': ev.thumbnail_url or ev.cloudinary_url,
+                'caption': ev.caption,
+                'captured_at': ev.captured_at,
+                'hall_name': ev.incident.session.hall.name,
+                'session_title': ev.incident.session.title,
+                'camera_name': ev.incident.camera.name if ev.incident.camera else None,
+                'seat_label': ev.incident.seat_label,
+                'incident_status': ev.incident.status,
+            })
+        return Response({'count': len(results), 'results': results})
 
 
 class CameraPcTestView(APIView):

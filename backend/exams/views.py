@@ -22,11 +22,14 @@ class ExamHallListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = ExamHall.objects.prefetch_related('cameras').order_by('name')
-        user = self.request.user
         include_inactive = self.request.query_params.get('include_inactive') == '1'
-        if user.role == user.Role.ADMIN and include_inactive:
+        # Admin room manager can see inactive; supervisors only see enabled rooms
+        if self.request.user.role == self.request.user.Role.ADMIN and include_inactive:
             return qs
         return qs.filter(is_active=True)
+
+    def perform_create(self, serializer):
+        serializer.save(is_active=True)
 
 
 class ExamHallDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -37,9 +40,8 @@ class ExamHallDetailView(generics.RetrieveUpdateDestroyAPIView):
         return ExamHall.objects.prefetch_related('cameras').all()
 
     def perform_destroy(self, instance):
-        # Soft-delete so history stays intact
-        instance.is_active = False
-        instance.save(update_fields=['is_active'])
+        # Hard delete — cascades cameras/sessions (and their incidents)
+        instance.delete()
 
 
 class ExamSessionListCreateView(generics.ListCreateAPIView):
@@ -114,7 +116,10 @@ class DashboardStatsView(APIView):
 
         hall_id = request.query_params.get('hall')
         sessions = ExamSession.objects.filter(status=ExamSession.Status.LIVE)
-        incidents = Incident.objects.filter(status=Incident.Status.NEW)
+        incidents = Incident.objects.filter(
+            status=Incident.Status.NEW,
+            evidence_items__isnull=False,
+        ).distinct()
         cameras = Camera.objects.filter(is_online=True)
 
         if hall_id:

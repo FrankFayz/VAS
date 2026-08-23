@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, XCircle, User } from 'lucide-react'
+import { CheckCircle, XCircle, User, Inbox } from 'lucide-react'
 import api from '../../api/client'
 import AppLayout from '../../components/AppLayout'
+import EmptyState from '../../components/EmptyState'
 import { formatDate } from '../../utils/constants'
 
 export default function AdminApprovals() {
@@ -64,13 +65,11 @@ export default function AdminApprovals() {
           Loading Requests...
         </div>
       ) : users.length === 0 ? (
-        <div className="card py-16 text-center">
-          <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
-          <p className="mt-4 font-block text-sm font-bold uppercase tracking-[0.1em] text-white">
-            All Caught Up
-          </p>
-          <p className="mt-1 text-sm text-slate-500">No pending supervisor approvals.</p>
-        </div>
+        <EmptyState
+          icon={Inbox}
+          title="No Pending Approvals"
+          description="New supervisor sign-ups will appear here for review."
+        />
       ) : (
         <div className="space-y-4">
           {users.map((user) => (

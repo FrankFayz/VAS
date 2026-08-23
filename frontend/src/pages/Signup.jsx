@@ -107,7 +107,7 @@ export default function Signup() {
         <AuthBrandHeader />
 
         <div className="flex flex-1 flex-col justify-center px-5 py-8 sm:px-8 lg:px-10">
-          <div className="mx-auto w-full max-w-lg animate-fade-up">
+          <div className="mx-auto w-full max-w-lg">
             <p className="type-eyebrow">Get Console Access</p>
 
             <h1 className="mt-5 font-block text-3xl font-bold uppercase tracking-[-0.02em] text-white sm:text-4xl">
