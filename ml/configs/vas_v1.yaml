@@ -1,0 +1,76 @@
+# VAS Model V1 — baseline training reference
+# Used as documentation + defaults for Colab (see scripts/colab_vas_v1.py)
+
+experiment: vas_v1
+model: yolo26s.pt
+task: detect
+
+data:
+  # Local Colab path after Roboflow YOLO26 download + QC cleanup
+  root: /content/Merged_Datasets_For_Malpractice_Images-1
+  yaml: /content/Merged_Datasets_For_Malpractice_Images-1/data.yaml
+  images: 12010
+  annotations: 15419
+  classes:
+    - gesture_copying
+    - handwritten_copying
+    - normal
+    - paper_cheating
+    - peeping
+    - phone_cheating
+    - two_more_cheating
+    - un_authorized_material
+
+# Known imbalance (approx train image presence) — do NOT fake-duplicate
+class_risk:
+  strong: [normal, two_more_cheating, phone_cheating, paper_cheating]
+  thin: [peeping, gesture_copying]
+  weak: [handwritten_copying]
+  critical: [un_authorized_material]  # ~4 train images — expect poor recall
+
+hardware:
+  device: 0
+  gpu: Tesla T4
+  vram_gb: ~14.6
+  workers: 2
+
+smoke:
+  epochs: 3
+  batch: 16
+  imgsz: 640
+  patience: 3
+  name: vas_v1_smoke
+
+baseline:
+  epochs: 100
+  batch: 16          # if OOM: drop to 8, or use batch=-1 (auto ~60% VRAM)
+  imgsz: 640
+  patience: 20
+  seed: 42
+  cos_lr: true
+  close_mosaic: 10
+  pretrained: true
+  cache: false
+  plots: true
+  save: true
+  project: runs/detect
+  name: vas_v1
+
+# Exam-hall–aware augmentation (avoid unrealistic warps)
+augmentation:
+  fliplr: 0.5
+  flipud: 0.0
+  degrees: 5.0
+  shear: 0.0
+  perspective: 0.0
+  mosaic: 1.0
+  mixup: 0.0
+  copy_paste: 0.0
+  hsv_h: 0.015
+  hsv_s: 0.5
+  hsv_v: 0.3
+
+evaluation:
+  primary_split: test
+  report: per_class_precision_recall_map50_map50_95
+  do_not_overclaim: [un_authorized_material, handwritten_copying]
